@@ -1,0 +1,7 @@
+numpy>=1.21
+opencv-python>=4.5
+matplotlib>=3.4
+tqdm>=4.60
+
+# development
+pytest>=7.0

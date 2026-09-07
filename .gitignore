@@ -1,0 +1,28 @@
+# KITTI data - never commit the dataset
+data/
+data_odometry_*/
+*.png.npy
+*.bin
+
+# outputs
+results/
+*.jpg
+!docs/*.png
+
+# python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# editors / os
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

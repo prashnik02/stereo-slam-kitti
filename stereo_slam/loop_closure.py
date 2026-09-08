@@ -52,7 +52,10 @@ class KeyframeLoopCloser:
         Weaker match count meaning "close to a known place" - not a loop, but a
         reason not to spend a new keyframe here yet.
     min_frames_between_loops:
-        Guard against re-triggering on the keyframe we have just closed against.
+        Refuse to close against a keyframe newer than this many frames.  ``0``
+        (the default) disables the guard, which is how the reported results were
+        produced: the sweep's early exit on ``revisit_threshold`` already stops
+        the detector closing against somewhere it has only just left.
     """
 
     def __init__(
@@ -63,7 +66,7 @@ class KeyframeLoopCloser:
         check_interval: int = 20,
         loop_threshold: int = 50,
         revisit_threshold: int = 5,
-        min_frames_between_loops: int = 50,
+        min_frames_between_loops: int = 0,
     ) -> None:
         self.detector = detector
         self.matching = matching
@@ -111,12 +114,16 @@ class KeyframeLoopCloser:
         if self._since_check < self.check_interval:
             return pose
 
-        best_score = 0
+        # The database is walked oldest-first and the sweep STOPS at the first
+        # keyframe that is merely similar (``revisit_threshold``).  That early exit
+        # is what keeps the detector honest: it never reaches distant keyframes
+        # whose descriptors happen to cross ``loop_threshold`` by coincidence.
+        # Scanning the whole database instead produces ~200 m false closures on
+        # sequence 00.  See README "Results".
         for keyframe in self.keyframes:
             if index - keyframe.index < self.min_frames_between_loops:
                 continue
             score = self._score(descriptors, keyframe)
-            best_score = max(best_score, score)
 
             if score > self.loop_threshold:
                 self.loop_events.append(
@@ -132,11 +139,13 @@ class KeyframeLoopCloser:
                 self._since_check = 0
                 return np.array(keyframe.pose, copy=True)
 
-        if best_score > self.revisit_threshold:
-            # Near something we already know - hold off on a new keyframe.
-            self._since_check = max(self._since_check - 1, 0)
-            return pose
+            if score > self.revisit_threshold:
+                # Near a place we already know: not a loop, and not worth a new
+                # keyframe either.  Re-check on the next frame.
+                self._since_check = max(self._since_check - 1, 0)
+                return pose
 
+        # The sweep ran to the end without matching anything: remember this frame.
         self.add_keyframe(index, pose, keypoints, descriptors, image)
         return pose
 

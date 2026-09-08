@@ -6,11 +6,11 @@ OpenCV primitives and evaluated on the
 No SLAM framework, no ROS — the geometry is written out so the pipeline can be
 read end to end.
 
-![Trajectory on KITTI sequence 00](docs/trajectory_00.png)
+![KITTI sequence 00, without and with loop closing](docs/loopclosure_00.png)
 
-*KITTI sequence 00, 4541 frames, StereoSGBM + ORB, pure visual odometry — 2.21 %
-KITTI translation error over 3.7 km, with no bundle adjustment and no loop
-closure. Ground truth in black.*
+*KITTI sequence 00, 4541 frames, StereoBM + ORB. Loop closing cuts absolute
+trajectory error from 45.56 m to 22.22 m over 3.7 km, and final drift from
+58.13 m to 2.70 m. Ground truth in black, estimate in green.*
 
 ## Attribution
 
@@ -76,65 +76,72 @@ points.
 
 ## Results
 
-Sequences 00, 05 and 07, ORB features (3000 per frame), Lowe ratio 0.5,
-brute-force Hamming matching. Every configuration completed with **zero failed
-frames** — no frame ever fell back to the previous transform.
+Sequences 00, 05 and 07, full length, ORB (500 features) + StereoBM, Lowe ratio
+0.5, brute-force matching. Reproduce with the two commands below.
 
-| Seq | Configuration | KITTI trans. | KITTI rot. | ATE RMSE | Final drift | RPE₁ trans. | fps |
-|---|---|---|---|---|---|---|---|
-| 00 | VO only (StereoBM) | 2.33 % | 0.00928 deg/m | 54.54 m | 45.98 m | 0.040 m | 19.4 |
-| 00 | VO + loop closure (StereoBM) | 7.31 % | 0.03215 deg/m | 32.61 m | 4.42 m | 6.058 m | 4.2 |
-| 00 | VO only (StereoSGBM) | **2.21 %** | 0.00902 deg/m | 46.71 m | 50.25 m | 0.039 m | 14.3 |
-| 00 | VO + loop closure (StereoSGBM) | 6.83 % | 0.03113 deg/m | **30.77 m** | **4.44 m** | 6.068 m | 3.9 |
-| 05 | VO only (StereoBM) | 1.54 % | 0.00651 deg/m | 17.26 m | 36.40 m | 0.035 m | 19.8 |
-| 05 | VO + loop closure (StereoBM) | 3.07 % | 0.01375 deg/m | **7.32 m** | **12.38 m** | 0.713 m | 7.8 |
-| 05 | VO only (StereoSGBM) | **1.53 %** | 0.00686 deg/m | 17.70 m | 38.41 m | 0.035 m | 14.4 |
-| 05 | VO + loop closure (StereoSGBM) | 3.04 % | 0.01436 deg/m | 7.75 m | 14.54 m | 0.698 m | 6.8 |
-| 07 | VO only (StereoBM) | 2.64 % | 0.01445 deg/m | 10.60 m | 21.37 m | 0.071 m | 18.7 |
-| 07 | VO + loop closure (StereoBM) | 19.57 % | 0.12564 deg/m | 59.45 m | 7.34 m | 4.893 m | 11.3 |
-| 07 | VO only (StereoSGBM) | **2.04 %** | 0.00929 deg/m | **8.15 m** | 11.57 m | 0.065 m | 14.0 |
-| 07 | VO + loop closure (StereoSGBM) | 18.89 % | 0.12000 deg/m | 56.65 m | 7.34 m | 4.672 m | 9.1 |
+| Seq | Frames | Configuration | KITTI trans. | KITTI rot. | ATE RMSE | Final drift | RPE₁ trans. | fps |
+|---|---|---|---|---|---|---|---|---|
+| 00 | 4541 | VO only | **2.68 %** | 0.01075 deg/m | 45.56 m | 58.13 m | **0.070 m** | 20.9 |
+| 00 | 4541 | VO + loop closure | 3.73 % | 0.01217 deg/m | **22.22 m** | **2.70 m** | 0.859 m | 25.3 |
+| 05 | 2761 | VO only | **1.95 %** | 0.01222 deg/m | 28.28 m | 68.15 m | **0.065 m** | 24.3 |
+| 05 | 2761 | VO + loop closure | 2.57 % | 0.01554 deg/m | **18.97 m** | **11.03 m** | 0.730 m | 25.2 |
+| 07 | 1101 | VO only | **2.53 %** | 0.00987 deg/m | **10.87 m** | 17.34 m | **0.096 m** | 28.4 |
+| 07 | 1101 | VO + loop closure | 3.00 % | 0.01326 deg/m | 11.53 m | **0.48 m** | 0.694 m | 28.4 |
 
-Path lengths are 3724 m (00), 2206 m (05) and 695 m (07). Throughput is
-single-threaded on a laptop CPU; `fps` includes disparity, detection, matching
-and PnP.
+Path lengths are 3724 m (00), 2206 m (05) and 695 m (07). Loop closure builds 193,
+117 and 48 keyframes and fires 17, 11 and 4 detections respectively, with a largest
+position correction of 47.7 m. One frame on sequence 00 failed PnP and reused the
+previous transform; every other frame in every configuration solved.
 
 ```bash
-python run.py --sequence 00 05 07 --stereo-matcher sgbm --output results/
-python run.py --sequence 00 05 07 --stereo-matcher sgbm --no-loop-closure --output results/
+python run.py --sequence 00 05 07 --stereo-matcher bm --output results/
+python run.py --sequence 00 05 07 --stereo-matcher bm --no-loop-closure --output results/
 ```
 
-**Reading the table.** Three things are worth pulling out.
+![KITTI sequence 05](docs/loopclosure_05.png)
+![KITTI sequence 07](docs/loopclosure_07.png)
 
-*The odometry front end is the strong part.* 1.53–2.64 % translation error, frame
-to frame, with no bundle adjustment and no windowed refinement. Single-frame
-relative pose error stays at 3.5–7 cm.
+**Loop closure trades local accuracy for global consistency.** It roughly halves
+ATE on sequence 00 (45.56 → 22.22 m) and cuts it by a third on 05
+(28.28 → 18.97 m), and it collapses final drift everywhere — 58 m to 2.7 m on 00,
+17 m to 0.5 m on 07. It also costs about one percentage point on the KITTI metric
+and inflates single-frame RPE tenfold, because each correction is a discontinuity:
+the pose is overwritten with the stored keyframe pose rather than the loop being
+optimised. Sequence 07 is the case where the trade does not pay off in ATE terms
+(10.87 → 11.53 m) — it is short, revisits its start only once, and has no long
+accumulated drift for a closure to cancel.
 
-*SGBM is better than BM, but by less than "visibly cleaner" suggests.* It wins on
-07 (2.04 % vs 2.64 %) and modestly on 00 (2.21 % vs 2.33 %), and ties on 05
-(1.53 % vs 1.54 %) — for roughly 25 % less throughput. Worth it when depth is the
-bottleneck; not a free win.
+The per-length breakdown of the KITTI metric shows the two failure modes cleanly
+on sequence 00. Without loop closure, error grows with window length — 2.02 % at
+100 m rising to 3.18 % at 800 m, the signature of accumulating drift. With it, the
+shape inverts: 4.12 % at 100 m falling to 2.79 % at 800 m, because a single
+discontinuity is a large fraction of a 100 m window and averages out over 800 m.
 
-*Loop closure trades local consistency for global anchoring, and the trade is not
-always favourable.* Snapping to a stored keyframe pose improves ATE on 00
-(46.71 → 30.77 m) and halves it on 05 (17.70 → 7.75 m), and improves final drift
-on every sequence. It also degrades the KITTI metric on every sequence and
-inflates single-frame RPE by one to two orders of magnitude (20× on 05, 155× on
-00), because each correction is a discontinuity in the trajectory. On 07 it is
-catastrophic (2.04 % → 18.89 %): a single snap fired while the vehicle was
-stationary and turning, and the resulting heading error dominated the rest of the
-run. Limitation 2 has the frame-by-frame breakdown.
+### Feature count is a loop-closure parameter
 
-That last point is the argument for reporting all three metric families rather
-than one. Final drift alone says loop closure wins on all three sequences. An
-earlier version of this README quoted development numbers of 206.5 m with loop
-closure against 215.4 m without, measured as mean Euclidean position error over
-sequence 00 — a single-endpoint-style figure that hid both the scale of the drift
-and the discontinuities. Those numbers are obsolete. They also predate the fix to
-the streamed loading path, which had been reading right images from `image_0` —
-so the "stereo" depth was computed from two copies of the left camera, which
-would account for errors of that size. The table above is what the pipeline
-actually does.
+Loop detection fires on a fixed count of surviving descriptor matches
+(`loop_threshold = 50`). That threshold is only meaningful relative to how many
+features exist per frame, so `ORB_FEATURES` silently tunes the detector:
+
+| ORB features | Detections on seq 00 | Largest correction | KITTI trans. | ATE RMSE |
+|---|---|---|---|---|
+| 500 | 17 | 47.7 m | 3.73 % | 22.22 m |
+| 3000 | 37 | 208.9 m | 7.31 % | 32.61 m |
+
+At 3000 features the same 50-match threshold is crossed by coincidence between
+places that merely look alike, producing four false closures of roughly 200 m each
+on sequence 00 and pushing the KITTI error to 7.31 %. The extra features genuinely
+help the odometry — pure VO improves from 2.68 % to 2.33 % — so the fix is not to
+avoid them but to scale the threshold with the descriptor count, or to score a
+*fraction* of features matched rather than an absolute number. Until then,
+`ORB_FEATURES` and `loop_threshold` have to be changed together.
+
+An earlier version of this README quoted development numbers of 206.5 m with loop
+closure against 215.4 m without, as mean Euclidean position error on sequence 00.
+Those are obsolete: they predate the fix to the streamed loading path, which had
+been reading right images from `image_0`, so the "stereo" depth was computed from
+two copies of the left camera.
+
 
 ## Setup
 
@@ -187,52 +194,47 @@ Stated plainly, because they are the interesting part:
 1. **No bundle adjustment.** Poses are chained frame to frame and never revisited,
    so every PnP error is permanent. A sliding-window BA over the last N keyframes
    is the single largest available accuracy win.
-2. **Loop correction is a snap, not an optimisation, and it corrupts *future*
-   poses as well as past ones.** On detection the current pose is overwritten with
-   the stored keyframe pose — position *and orientation*. Detecting the same
-   *place* does not mean the vehicle is in the same *pose*, and overwriting the
-   heading means every subsequent translation accumulates in the wrong direction.
+2. **Loop correction is a snap, not an optimisation.** On detection the current
+   pose is overwritten with the stored keyframe pose — position *and orientation*.
+   Detecting the same *place* does not mean the vehicle is in the same *pose*, so
+   the correction is only as good as the assumption that the car is oriented the
+   way it was last time. Every intermediate pose is left untouched, and the
+   trajectory gains a discontinuity: single-frame RPE rises roughly tenfold
+   (0.070 → 0.859 m on sequence 00) while the odometry itself is unchanged.
 
-   Sequence 07 shows this cleanly. At frames 643–753 the car is stopped at a
-   junction (0.11 m/frame against a 0.63 m/frame sequence mean) and *turning* —
-   ground-truth yaw swings from −178.7° to 125.2°. The snap at frame 753 resets
-   the heading to keyframe 667's, injecting roughly 51° of error. Position error
-   against ground truth then goes 10.4 m (frame 740) → 35.3 m (800) → 125.7 m
-   (900), while the identical no-loop run stays near 11 m throughout. All seven
-   detections on that sequence were *correct* — frame 1059 really is 0.71 m from
-   the start — so the fault is entirely in the correction step, not in place
-   recognition.
-
-   | pure odometry | with loop closure |
-   |---|---|
-   | ![sequence 07, VO only](docs/trajectory_07_vo.png) | ![sequence 07, loop closure](docs/trajectory_07_loop.png) |
-
-   Same sequence, same parameters, loop closure the only difference. Red circles
-   mark detections; the final one snaps the trajectory back onto the origin, which
-   is why *final drift* improves even as the trajectory as a whole gets worse.
+   That discontinuity is also why *final drift* flatters this method. On sequence
+   00 the last closure lands near the start point and final drift reads 2.70 m,
+   while ATE says the trajectory is still 22 m off on average. Any single-endpoint
+   measure will overstate how well loop closing is working.
 
    Two cheap mitigations before reaching for a pose graph: refuse to close while
-   the vehicle is effectively stationary or rotating, and apply the correction as
-   a relative transform rather than an absolute overwrite. The real answer is a
-   pose graph that distributes the residual around the loop (g2o, GTSAM, Ceres).
-3. **Place recognition is brute-force descriptor matching** against every
-   keyframe — O(N) per query, and prone to false positives in repetitive scenes.
-   The cost is the dominant one at scale: on sequence 00 the keyframe database
-   grows to 170 entries and throughput falls from 14.3 fps to 3.9, a 3.7×
-   slowdown, while sequence 07 with 46 keyframes only drops from 14.0 to 9.1.
-   Accuracy of *detection*, though, was not the problem in these runs — the seven
-   closures on sequence 07 were all genuine revisits. DBoW2 or a learned global
+   the vehicle is effectively stationary or rotating, and apply the correction as a
+   relative transform rather than an absolute overwrite. The real answer is a pose
+   graph that distributes the residual around the loop (g2o, GTSAM, Ceres).
+3. **Place recognition is brute-force descriptor matching** against every keyframe
+   — O(N) per query, and prone to false positives in repetitive scenes. Two
+   consequences, both measured. The false positives are governed by the ratio
+   between `loop_threshold` and `ORB_FEATURES`, not by either alone: see
+   "Feature count is a loop-closure parameter" above. The cost grows with the
+   database — the sweep stops early at the first similar keyframe, which keeps it
+   affordable here (193 keyframes on sequence 00 at ~25 fps), but a query that
+   finds nothing still compares against everything. DBoW2 or a learned global
    descriptor with a geometric verification step is the standard answer.
 4. **Depth quality bounds everything.** StereoBM is fast but noisy on low-texture
-   road surfaces; SGBM is cleaner at a real time cost, though the measured gap is
-   narrower than that framing suggests — 2.04 % vs 2.64 % on sequence 07, 2.21 %
-   vs 2.33 % on 00, and a tie on 05, for about 25 % less throughput. Feature depth
-   is sampled at a single pixel with no sub-pixel interpolation or local
-   consistency check.
-5. **No motion model or outlier rejection beyond RANSAC.** A failed frame reuses
-   the previous transform, which is a crude constant-velocity assumption. In
-   practice that path never executed: all twelve runs above completed with zero
-   failed frames, so the fallback is untested on real data.
+   road surfaces; SGBM adds a semi-global smoothness cost and is cleaner, at
+   roughly 25 % less throughput. The results above use StereoBM. Feature depth is
+   sampled at a single pixel with no sub-pixel interpolation or local consistency
+   check.
+5. **No motion model or outlier rejection beyond RANSAC.** When PnP fails the
+   previous transform is reused, which is a crude constant-velocity assumption.
+   This fired exactly once across all six runs, on sequence 00; every other frame
+   solved, so the fallback is close to untested on real data.
+6. **Thresholds are absolute counts, not ratios.** `loop_threshold = 50` matches
+   and `revisit_threshold = 5` are raw counts, so they are only meaningful at a
+   particular `ORB_FEATURES`. Changing the feature count silently retunes the loop
+   detector — the single most surprising behaviour in this codebase, and the reason
+   the Results section documents both settings.
+
 
 ## Repository layout
 

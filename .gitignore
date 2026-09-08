@@ -6,6 +6,7 @@ data_odometry_*/
 
 # outputs
 results/
+results_v2/
 *.jpg
 !docs/*.png
 

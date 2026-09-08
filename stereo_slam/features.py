@@ -10,12 +10,29 @@ import cv2
 import numpy as np
 
 
-def _create_detector(detector: str):
+#: ORB features per frame.  This interacts with ``KeyframeLoopCloser`` more than it
+#: looks: loop detection fires on a fixed *count* of surviving matches, so raising
+#: this silently loosens the loop detector.  At 3000 features the same threshold of
+#: 50 matches is crossed by chance and produces ~200 m false closures on sequence
+#: 00; at 500 it does not.  See README "Results".
+ORB_FEATURES = 500
+
+#: Distance used to compare ORB descriptors.  ``NORM_HAMMING2`` compares *pairs* of
+#: bits, which is what OpenCV documents for ORB built with ``WTA_K=3`` or ``4``; with
+#: the default ``WTA_K=2`` the textbook choice is ``NORM_HAMMING``.  The published
+#: results use ``NORM_HAMMING2`` because that is what the original implementation
+#: used.  Measured, the two are close on sequence 00 (500 features, loop closure on):
+#: HAMMING2 gives 3.73 % / ATE 22.22 m, HAMMING gives 4.63 % / ATE 20.90 m.  Switch
+#: this to ``cv2.NORM_HAMMING`` and the numbers in the README shift accordingly.
+ORB_NORM = cv2.NORM_HAMMING2
+
+
+def _create_detector(detector: str, nfeatures: int = ORB_FEATURES):
     name = detector.lower()
     if name == "sift":
         return cv2.SIFT_create()
     if name == "orb":
-        return cv2.ORB_create(nfeatures=3000)
+        return cv2.ORB_create(nfeatures=nfeatures)
     if name == "akaze":
         return cv2.AKAZE_create()
     if name == "surf":  # patented; only present in opencv-contrib non-free builds
@@ -24,10 +41,13 @@ def _create_detector(detector: str):
 
 
 def extract_features(
-    image: np.ndarray, detector: str = "orb", mask: Optional[np.ndarray] = None
+    image: np.ndarray,
+    detector: str = "orb",
+    mask: Optional[np.ndarray] = None,
+    nfeatures: int = ORB_FEATURES,
 ) -> Tuple[Sequence, np.ndarray]:
     """Detect keypoints and compute descriptors."""
-    return _create_detector(detector).detectAndCompute(image, mask)
+    return _create_detector(detector, nfeatures).detectAndCompute(image, mask)
 
 
 def match_features(
@@ -49,7 +69,9 @@ def match_features(
 
     binary = detector.lower() in {"orb", "akaze"}
     if matching.upper() == "BF":
-        norm = cv2.NORM_HAMMING if binary else cv2.NORM_L2
+        norm = ORB_NORM if detector.lower() == "orb" else (
+            cv2.NORM_HAMMING if binary else cv2.NORM_L2
+        )
         matcher = cv2.BFMatcher_create(norm, crossCheck=False)
     elif matching.upper() == "FLANN":
         if binary:

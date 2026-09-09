@@ -18,21 +18,20 @@ trajectory error from 45.56 m to 22.22 m over 3.7 km, and final drift from
 [FoamoftheSea/KITTI_visual_odometry](https://github.com/FoamoftheSea/KITTI_visual_odometry)
 by Nate Cibik** ("KITTI Odometry in Python and OpenCV — Beginner's Guide to Computer
 Vision"), which is licensed under GPL-3.0. I worked through that tutorial to learn the
-geometry, and the dataset handling, disparity/depth computation, feature matching and
-PnP motion-estimation stages follow its structure. This repository is therefore also
-released under **GPL-3.0** (see [LICENSE](LICENSE)); credit for the underlying tutorial
-belongs to its author.
+geometry, and the odometry front end here follows its structure. This repository is
+therefore also released under **GPL-3.0** (see [LICENSE](LICENSE)); credit for the
+underlying tutorial belongs to its author.
 
-What I added on top of it:
+**From the tutorial**, refactored and vectorised here: dataset loading,
+disparity and depth, feature detection and matching, and PnP motion estimation
+(`dataset.py`, `stereo.py`, `features.py`, `odometry.py`).
 
-| Component | Origin |
-|---|---|
-| Dataset loading, disparity/depth, feature matching, PnP odometry | Derived from the tutorial above (refactored and vectorised) |
-| **Keyframe database and loop detection** (`loop_closure.py`) | Mine |
-| **Loop-closure vs pure-odometry comparison** | Mine |
-| **Evaluation harness** — KITTI segment error, ATE, RPE, Umeyama alignment (`metrics.py`) | Mine |
-| **Test suite** — analytic metric tests + synthetic end-to-end smoke test (`tests/`) | Mine |
-| Package structure, CLI, plotting | Mine |
+**New in this repository:**
+
+* `loop_closure.py` — keyframe database and appearance-based loop detection
+* `metrics.py` — KITTI segment error, ATE, RPE, Umeyama alignment
+* `tests/` — analytic metric tests and a synthetic end-to-end smoke test
+* the loop-closure vs pure-odometry comparison, package structure, CLI and plotting
 
 **Statement of modifications** (GPL-3.0 §5(a)), measured against the tutorial as
 published:
@@ -45,7 +44,7 @@ published:
   replaced by `metrics.py` (KITTI segment error, ATE, RPE).
 * Dataset paths were relative to a fixed layout; they now resolve from
   `$KITTI_ROOT`.
-* Keyframes, loop detection, the CLI, plotting and the tests are new.
+* Everything listed as new above has no counterpart in the tutorial.
 
 ## Pipeline
 
@@ -87,19 +86,29 @@ points.
 Sequences 00, 05 and 07, full length, ORB (500 features) + StereoBM, Lowe ratio
 0.5, brute-force matching. Reproduce with the two commands below.
 
-| Seq | Frames | Configuration | KITTI trans. | KITTI rot. | ATE RMSE | Final drift | RPE₁ trans. | fps |
-|---|---|---|---|---|---|---|---|---|
-| 00 | 4541 | VO only | **2.68 %** | 0.01075 deg/m | 45.56 m | 58.13 m | **0.070 m** | 20.9 |
-| 00 | 4541 | VO + loop closure | 3.73 % | 0.01217 deg/m | **22.22 m** | **2.70 m** | 0.859 m | 25.3 |
-| 05 | 2761 | VO only | **1.95 %** | 0.01222 deg/m | 28.28 m | 68.15 m | **0.065 m** | 24.3 |
-| 05 | 2761 | VO + loop closure | 2.57 % | 0.01554 deg/m | **18.97 m** | **11.03 m** | 0.730 m | 25.2 |
-| 07 | 1101 | VO only | **2.53 %** | 0.00987 deg/m | **10.87 m** | 17.34 m | **0.096 m** | 28.4 |
-| 07 | 1101 | VO + loop closure | 3.00 % | 0.01326 deg/m | 11.53 m | **0.48 m** | 0.694 m | 28.4 |
+| Seq | Frames | Configuration | KITTI trans. | KITTI rot. | ATE RMSE | Final drift | RPE₁ trans. |
+|---|---|---|---|---|---|---|---|
+| 00 | 4541 | VO only | **2.68 %** | 0.01075 deg/m | 45.56 m | 58.13 m | **0.070 m** |
+| 00 | 4541 | VO + loop closure | 3.73 % | 0.01217 deg/m | **22.22 m** | **2.70 m** | 0.859 m |
+| 05 | 2761 | VO only | **1.95 %** | 0.01222 deg/m | 28.28 m | 68.15 m | **0.065 m** |
+| 05 | 2761 | VO + loop closure | 2.57 % | 0.01554 deg/m | **18.97 m** | **11.03 m** | 0.730 m |
+| 07 | 1101 | VO only | **2.53 %** | 0.00987 deg/m | **10.87 m** | 17.34 m | **0.096 m** |
+| 07 | 1101 | VO + loop closure | 3.00 % | 0.01326 deg/m | 11.53 m | **0.48 m** | 0.694 m |
 
 Path lengths are 3724 m (00), 2206 m (05) and 695 m (07). Loop closure builds 193,
 117 and 48 keyframes and fires 17, 11 and 4 detections respectively, with a largest
 position correction of 47.7 m. One frame on sequence 00 failed PnP and reused the
 previous transform; every other frame in every configuration solved.
+
+**Throughput.** Sequence 00 with loop closure runs in 160 s for 4540 frames,
+about 35 ms per frame single-threaded on a laptop CPU. No per-configuration
+figure is quoted because run-to-run variance on this machine is ±20 %, which is
+far larger than the difference being compared — end-to-end timings put
+loop closure alternately faster and slower than pure odometry, which is
+meaningless. Timing the detector *within* a single run avoids that: loop
+detection accounts for **14.2 %** of pipeline time on sequence 00 (22.8 s of
+160.1 s), spread over 568 database sweeps at 40.1 ms each, or 5.0 ms amortised
+per frame.
 
 ```bash
 python run.py --sequence 00 05 07 --stereo-matcher bm --output results/
@@ -226,11 +235,12 @@ Stated plainly, because they are the interesting part:
    — O(N) per query, and prone to false positives in repetitive scenes. Two
    consequences, both measured. The false positives are governed by the ratio
    between `loop_threshold` and `ORB_FEATURES`, not by either alone: see
-   "Feature count is a loop-closure parameter" above. The cost grows with the
-   database — the sweep stops early at the first similar keyframe, which keeps it
-   affordable here (193 keyframes on sequence 00 at ~25 fps), but a query that
-   finds nothing still compares against everything. DBoW2 or a learned global
-   descriptor with a geometric verification step is the standard answer.
+   "Feature count is a loop-closure parameter" above. The cost is bounded here by
+   the sweep's early exit — 14.2 % of pipeline time on sequence 00, at 40.1 ms per
+   sweep against 193 keyframes — but that is luck rather than design: a query that
+   matches nothing still compares against every entry, so the worst case is linear
+   in the database and grows without limit. DBoW2 or a learned global descriptor
+   with a geometric verification step is the standard answer.
 4. **Depth quality bounds everything.** StereoBM is fast but noisy on low-texture
    road surfaces; SGBM adds a semi-global smoothness cost and is cleaner, at
    roughly 25 % less throughput. The results above use StereoBM. Feature depth is

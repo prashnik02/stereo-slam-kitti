@@ -47,10 +47,6 @@ published:
   `$KITTI_ROOT`.
 * Keyframes, loop detection, the CLI, plotting and the tests are new.
 
-Two bugs in the streamed-loading path — right images read from `image_0`, and the
-image height taken from a pixel row rather than `.shape[0]` — were **mine, introduced
-while adapting the original**, and are fixed here. The tutorial had both correct.
-
 ## Pipeline
 
 ```

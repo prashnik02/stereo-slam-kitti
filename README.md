@@ -166,7 +166,7 @@ ATEs of 22 m and 46 m. That is the reason `metrics.py` exists.
 ## Setup
 
 ```bash
-git clone <this repo> && cd stereo-slam-kitti
+git clone https://github.com/prashnik02/stereo-slam-kitti.git && cd stereo-slam-kitti
 pip install -r requirements.txt
 ```
 

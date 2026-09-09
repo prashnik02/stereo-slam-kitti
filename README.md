@@ -27,17 +27,29 @@ What I added on top of it:
 
 | Component | Origin |
 |---|---|
-| Dataset loading, disparity/depth, feature matching, PnP odometry | Derived from the tutorial above (refactored, vectorised, bugs fixed) |
+| Dataset loading, disparity/depth, feature matching, PnP odometry | Derived from the tutorial above (refactored and vectorised) |
 | **Keyframe database and loop detection** (`loop_closure.py`) | Mine |
 | **Loop-closure vs pure-odometry comparison** | Mine |
 | **Evaluation harness** — KITTI segment error, ATE, RPE, Umeyama alignment (`metrics.py`) | Mine |
 | **Test suite** — analytic metric tests + synthetic end-to-end smoke test (`tests/`) | Mine |
 | Package structure, CLI, plotting | Mine |
 
-Refactoring in this version includes vectorising the 3D back-projection loop, fixing
-the streamed-loading path (it was reading right images from `image_0` and taking the
-image height from a pixel row), replacing hardcoded absolute paths with `$KITTI_ROOT`,
-and replacing a single-reference-frame error function with standard trajectory metrics.
+**Statement of modifications** (GPL-3.0 §5(a)), measured against the tutorial as
+published:
+
+* The 3D back-projection in `estimate_motion` was a Python loop that grew its
+  output with `np.vstack` on every match; it is now vectorised.
+* `calculate_error` compared every estimated pose against a *single* ground-truth
+  frame, so it measured the trajectory's spread about one point rather than its
+  error — feeding it a perfect trajectory on sequence 00 returns 213 m. It is
+  replaced by `metrics.py` (KITTI segment error, ATE, RPE).
+* Dataset paths were relative to a fixed layout; they now resolve from
+  `$KITTI_ROOT`.
+* Keyframes, loop detection, the CLI, plotting and the tests are new.
+
+Two bugs in the streamed-loading path — right images read from `image_0`, and the
+image height taken from a pixel row rather than `.shape[0]` — were **mine, introduced
+while adapting the original**, and are fixed here. The tutorial had both correct.
 
 ## Pipeline
 
@@ -136,11 +148,14 @@ avoid them but to scale the threshold with the descriptor count, or to score a
 *fraction* of features matched rather than an absolute number. Until then,
 `ORB_FEATURES` and `loop_threshold` have to be changed together.
 
-An earlier version of this README quoted development numbers of 206.5 m with loop
-closure against 215.4 m without, as mean Euclidean position error on sequence 00.
-Those are obsolete: they predate the fix to the streamed loading path, which had
-been reading right images from `image_0`, so the "stereo" depth was computed from
-two copies of the left camera.
+Earlier development numbers of 206.5 m with loop closure against 215.4 m without,
+on sequence 00, are not comparable to anything above — and are not a measure of
+accuracy at all. They came from the tutorial's `calculate_error`, which compares
+every estimated pose against a single ground-truth frame, so it reports how far
+the trajectory spreads from one point rather than how wrong it is. Feeding it the
+ground truth *as the estimate* returns **213.43 m**; the two figures straddle that
+value, and the runs above score 205.60 m and 210.10 m on the same function despite
+ATEs of 22 m and 46 m. That is the reason `metrics.py` exists.
 
 
 ## Setup
